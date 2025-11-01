@@ -1,0 +1,409 @@
+<?php
+/**
+ * PMP Roles Handler - Manejo específico de roles y permisos PMP
+ * MXWM-PMP-FRONTEND-FIX-DIC2024-FINAL
+ * 
+ * Incluir en functions.php con: require_once get_template_directory() . '/pmp-roles-handler.php';
+ */
+
+// ============================================================================
+// CREACIÓN Y GESTIÓN DE ROLES PMP
+// ============================================================================
+
+/**
+ * Crear roles PMP si no existen
+ */
+function mxwm_create_pmp_roles() {
+    // Rol PMP Nivel 2
+    if (!get_role('pmp_level_2')) {
+        add_role('pmp_level_2', 'PMP Nivel 2', array(
+            'read' => true,
+            'edit_posts' => false,
+            'publish_posts' => false,
+            'upload_files' => true,
+        ));
+    }
+    
+    // Rol PMP Nivel 3
+    if (!get_role('pmp_level_3')) {
+        add_role('pmp_level_3', 'PMP Nivel 3', array(
+            'read' => true,
+            'edit_posts' => false,
+            'publish_posts' => false,
+            'upload_files' => true,
+            'manage_categories' => true,
+        ));
+    }
+    
+    // Asignar capacidades específicas para proyectos
+    mxwm_assign_proyecto_capabilities();
+}
+add_action('init', 'mxwm_create_pmp_roles', 1);
+
+/**
+ * Asignar capacidades específicas para proyectos a roles PMP
+ */
+function mxwm_assign_proyecto_capabilities() {
+    $pmp2_caps = array(
+        'edit_proyecto',
+        'read_proyecto',
+        'delete_proyecto',
+        'edit_proyectos',
+        'publish_proyectos',
+        'delete_proyectos',
+        'edit_private_proyectos',
+        'edit_published_proyectos',
+        'delete_private_proyectos',
+        'delete_published_proyectos',
+    );
+    
+    $pmp3_caps = array_merge($pmp2_caps, array(
+        'edit_others_proyectos',
+        'delete_others_proyectos',
+        'read_private_proyectos',
+        'manage_proyecto_terms',
+        'edit_proyecto_terms',
+        'delete_proyecto_terms',
+        'assign_proyecto_terms',
+    ));
+    
+    // Asignar a PMP Nivel 2
+    $pmp2_role = get_role('pmp_level_2');
+    if ($pmp2_role) {
+        foreach ($pmp2_caps as $cap) {
+            $pmp2_role->add_cap($cap);
+        }
+    }
+    
+    // Asignar a PMP Nivel 3
+    $pmp3_role = get_role('pmp_level_3');
+    if ($pmp3_role) {
+        foreach ($pmp3_caps as $cap) {
+            $pmp3_role->add_cap($cap);
+        }
+    }
+}
+
+// ============================================================================
+// FUNCIONES DE UTILIDAD PARA VERIFICAR PERMISOS PMP
+// ============================================================================
+
+/**
+ * Verificar si el usuario es PMP y qué nivel tiene
+ */
+function mxwm_get_user_pmp_level($user_id = null) {
+    if (!$user_id) {
+        $user_id = get_current_user_id();
+    }
+    
+    if (!$user_id) {
+        return false;
+    }
+    
+    // Verificar meta field primero
+    $pmp_level = get_user_meta($user_id, 'pmp_level', true);
+    
+    if (!empty($pmp_level)) {
+        return $pmp_level;
+    }
+    
+    // Si no hay meta, verificar por rol
+    $user = get_userdata($user_id);
+    if ($user) {
+        if (in_array('pmp_level_3', $user->roles)) {
+            update_user_meta($user_id, 'pmp_level', '3');
+            return '3';
+        } elseif (in_array('pmp_level_2', $user->roles)) {
+            update_user_meta($user_id, 'pmp_level', '2');
+            return '2';
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Verificar si el usuario puede crear proyectos
+ */
+function mxwm_user_can_create_proyecto($user_id = null) {
+    if (!$user_id) {
+        $user_id = get_current_user_id();
+    }
+    
+    // Admin siempre puede
+    if (user_can($user_id, 'administrator')) {
+        return true;
+    }
+    
+    // Verificar PMP level
+    $pmp_level = mxwm_get_user_pmp_level($user_id);
+    if (in_array($pmp_level, ['2', '3'])) {
+        return true;
+    }
+    
+    // Verificar capacidades específicas
+    if (user_can($user_id, 'edit_proyectos') || user_can($user_id, 'publish_proyectos')) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Verificar si el usuario puede usar galería (solo PMP 3)
+ */
+function mxwm_user_can_upload_gallery($user_id = null) {
+    if (!$user_id) {
+        $user_id = get_current_user_id();
+    }
+    
+    // Admin siempre puede
+    if (user_can($user_id, 'administrator')) {
+        return true;
+    }
+    
+    // Solo PMP Nivel 3
+    $pmp_level = mxwm_get_user_pmp_level($user_id);
+    return ($pmp_level === '3');
+}
+
+/**
+ * Verificar si el usuario puede editar un proyecto específico
+ */
+function mxwm_user_can_edit_proyecto($proyecto_id, $user_id = null) {
+    if (!$user_id) {
+        $user_id = get_current_user_id();
+    }
+    
+    // Admin siempre puede
+    if (user_can($user_id, 'administrator')) {
+        return true;
+    }
+    
+    $proyecto = get_post($proyecto_id);
+    if (!$proyecto || $proyecto->post_type !== 'proyecto') {
+        return false;
+    }
+    
+    // El autor siempre puede editar su propio proyecto
+    if ($proyecto->post_author == $user_id && mxwm_user_can_create_proyecto($user_id)) {
+        return true;
+    }
+    
+    // PMP Nivel 3 puede editar proyectos de otros
+    if (mxwm_get_user_pmp_level($user_id) === '3' && user_can($user_id, 'edit_others_proyectos')) {
+        return true;
+    }
+    
+    return false;
+}
+
+// ============================================================================
+// HOOKS PARA APLICAR PERMISOS
+// ============================================================================
+
+/**
+ * Filtrar query de proyectos según permisos del usuario
+ */
+function mxwm_filter_proyecto_query($query) {
+    if (is_admin() || !$query->is_main_query()) {
+        return;
+    }
+    
+    // Solo aplicar filtro en páginas de proyectos
+    if (!is_post_type_archive('proyecto') && !is_singular('proyecto')) {
+        return;
+    }
+    
+    $user_id = get_current_user_id();
+    
+    // Si no está logueado, solo mostrar proyectos públicos
+    if (!$user_id) {
+        $query->set('post_status', 'publish');
+        return;
+    }
+    
+    // Admin ve todo
+    if (user_can($user_id, 'administrator')) {
+        return;
+    }
+    
+    // PMP usuarios ven sus proyectos y proyectos públicos
+    $pmp_level = mxwm_get_user_pmp_level($user_id);
+    if ($pmp_level) {
+        // En el archivo de proyectos, mostrar solo publicados
+        if (is_post_type_archive('proyecto')) {
+            $query->set('post_status', 'publish');
+        }
+        // En páginas individuales, permitir ver propios borradores
+        elseif (is_singular('proyecto')) {
+            $query->set('post_status', array('publish', 'private'));
+        }
+    }
+}
+add_action('pre_get_posts', 'mxwm_filter_proyecto_query');
+
+/**
+ * Interceptar intentos de acceso no autorizado al admin
+ */
+function mxwm_restrict_admin_access() {
+    if (is_admin() && !current_user_can('administrator') && !wp_doing_ajax()) {
+        $user_id = get_current_user_id();
+        $pmp_level = mxwm_get_user_pmp_level($user_id);
+        
+        // Si es usuario PMP y está intentando acceder al admin para proyectos
+        if ($pmp_level && isset($_GET['post_type']) && $_GET['post_type'] === 'proyecto') {
+            // Redirigir al frontend
+            wp_redirect(home_url('/crear-proyecto-frontend/'));
+            exit;
+        }
+        
+        // Si es usuario PMP y está intentando editar un proyecto
+        if ($pmp_level && isset($_GET['action']) && $_GET['action'] === 'edit' && isset($_GET['post'])) {
+            $post_id = intval($_GET['post']);
+            $post = get_post($post_id);
+            
+            if ($post && $post->post_type === 'proyecto') {
+                // Redirigir a página de edición frontend (si la creamos)
+                wp_redirect(home_url('/editar-proyecto/?proyecto=' . $post_id));
+                exit;
+            }
+        }
+    }
+}
+add_action('admin_init', 'mxwm_restrict_admin_access');
+
+/**
+ * Ocultar elementos del admin para usuarios PMP
+ */
+function mxwm_hide_admin_elements_for_pmp() {
+    $user_id = get_current_user_id();
+    $pmp_level = mxwm_get_user_pmp_level($user_id);
+    
+    if ($pmp_level && !current_user_can('administrator')) {
+        // Ocultar elementos del menú admin que no necesitan
+        remove_menu_page('edit.php'); // Posts
+        remove_menu_page('edit.php?post_type=page'); // Pages
+        remove_menu_page('edit-comments.php'); // Comments
+        remove_menu_page('themes.php'); // Appearance
+        remove_menu_page('plugins.php'); // Plugins
+        remove_menu_page('users.php'); // Users
+        remove_menu_page('tools.php'); // Tools
+        remove_menu_page('options-general.php'); // Settings
+        
+        // Solo mantener Dashboard, Media y sus proyectos
+    }
+}
+add_action('admin_menu', 'mxwm_hide_admin_elements_for_pmp', 999);
+
+// ============================================================================
+// SINCRONIZACIÓN DE ROLES Y META FIELDS
+// ============================================================================
+
+/**
+ * Sincronizar rol del usuario con meta field pmp_level
+ */
+function mxwm_sync_pmp_role_and_meta($user_id, $role, $old_roles) {
+    if ($role === 'pmp_level_2') {
+        update_user_meta($user_id, 'pmp_level', '2');
+    } elseif ($role === 'pmp_level_3') {
+        update_user_meta($user_id, 'pmp_level', '3');
+    } elseif (!in_array($role, ['pmp_level_2', 'pmp_level_3'])) {
+        // Si se asigna un rol que no es PMP, limpiar el meta
+        $user = get_userdata($user_id);
+        if ($user && !array_intersect(['pmp_level_2', 'pmp_level_3'], $user->roles)) {
+            delete_user_meta($user_id, 'pmp_level');
+        }
+    }
+}
+add_action('set_user_role', 'mxwm_sync_pmp_role_and_meta', 10, 3);
+
+/**
+ * Sincronizar al cambiar meta field pmp_level
+ */
+function mxwm_sync_meta_to_role($meta_id, $user_id, $meta_key, $meta_value) {
+    if ($meta_key !== 'pmp_level') {
+        return;
+    }
+    
+    $user = get_userdata($user_id);
+    if (!$user) {
+        return;
+    }
+    
+    // Remover roles PMP existentes
+    $user->remove_role('pmp_level_2');
+    $user->remove_role('pmp_level_3');
+    
+    // Agregar nuevo rol según meta value
+    if ($meta_value === '2') {
+        $user->add_role('pmp_level_2');
+    } elseif ($meta_value === '3') {
+        $user->add_role('pmp_level_3');
+    }
+}
+add_action('updated_user_meta', 'mxwm_sync_meta_to_role', 10, 4);
+
+// ============================================================================
+// UTILIDADES PARA DEBUGGING
+// ============================================================================
+
+/**
+ * Función para debug - verificar permisos de un usuario
+ */
+function mxwm_debug_user_permissions($user_id = null) {
+    if (!current_user_can('administrator')) {
+        return 'Solo administradores pueden usar esta función de debug';
+    }
+    
+    if (!$user_id) {
+        $user_id = get_current_user_id();
+    }
+    
+    $user = get_userdata($user_id);
+    if (!$user) {
+        return 'Usuario no encontrado';
+    }
+    
+    $debug_info = array(
+        'user_id' => $user_id,
+        'username' => $user->user_login,
+        'roles' => $user->roles,
+        'pmp_level' => mxwm_get_user_pmp_level($user_id),
+        'can_create_proyecto' => mxwm_user_can_create_proyecto($user_id),
+        'can_upload_gallery' => mxwm_user_can_upload_gallery($user_id),
+        'capabilities' => array(
+            'edit_proyectos' => user_can($user_id, 'edit_proyectos'),
+            'publish_proyectos' => user_can($user_id, 'publish_proyectos'),
+            'edit_others_proyectos' => user_can($user_id, 'edit_others_proyectos'),
+            'upload_files' => user_can($user_id, 'upload_files'),
+            'manage_categories' => user_can($user_id, 'manage_categories'),
+        )
+    );
+    
+    return $debug_info;
+}
+
+/**
+ * Shortcode para mostrar info de debug del usuario actual
+ * Uso: [mxwm_user_debug]
+ */
+function mxwm_user_debug_shortcode($atts) {
+    if (!current_user_can('administrator')) {
+        return '<p>Solo administradores pueden ver esta información</p>';
+    }
+    
+    $atts = shortcode_atts(array(
+        'user_id' => get_current_user_id()
+    ), $atts);
+    
+    $debug_info = mxwm_debug_user_permissions($atts['user_id']);
+    
+    $output = '<div style="background: #f0f0f0; padding: 1rem; border-radius: 5px; margin: 1rem 0; font-family: monospace;">';
+    $output .= '<h4>Debug Info - Usuario ID: ' . $atts['user_id'] . '</h4>';
+    $output .= '<pre>' . print_r($debug_info, true) . '</pre>';
+    $output .= '</div>';
+    
+    return $output;
+}
+add_shortcode('mxwm_user_debug', 'mxwm_user_debug_shortcode');

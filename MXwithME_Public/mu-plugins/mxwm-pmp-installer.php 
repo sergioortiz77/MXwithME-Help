@@ -1,0 +1,492 @@
+<?php
+/**
+ * MXWM PMP System Installer
+ * Instalador automático para el sistema PMP de proyectos
+ * MXWM-PMP-FRONTEND-FIX-DIC2024-FINAL
+ * 
+ * INSTRUCCIONES:
+ * 1. Subir este archivo al directorio del tema activo
+ * 2. Incluir en functions.php: require_once get_template_directory() . '/mxwm-pmp-installer.php';
+ * 3. Ir a Herramientas > MXWM PMP Installer en el admin
+ * 4. Hacer clic en "Instalar Sistema PMP"
+ */
+
+// Evitar acceso directo
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+/**
+ * Agregar página de instalador al menú de herramientas
+ */
+function mxwm_installer_admin_menu() {
+    add_management_page(
+        'MXWM PMP Installer',
+        'MXWM PMP Installer',
+        'manage_options',
+        'mxwm-pmp-installer',
+        'mxwm_installer_page'
+    );
+}
+add_action('admin_menu', 'mxwm_installer_admin_menu');
+
+/**
+ * Página del instalador
+ */
+function mxwm_installer_page() {
+    $status = '';
+    $error = '';
+    
+    if (isset($_POST['install_pmp_system']) && wp_verify_nonce($_POST['installer_nonce'], 'install_pmp_system')) {
+        $result = mxwm_install_pmp_system();
+        if ($result['success']) {
+            $status = $result['message'];
+        } else {
+            $error = $result['message'];
+        }
+    }
+    
+    if (isset($_POST['create_test_users']) && wp_verify_nonce($_POST['test_users_nonce'], 'create_test_users')) {
+        $result = mxwm_create_test_users();
+        if ($result['success']) {
+            $status = $result['message'];
+        } else {
+            $error = $result['message'];
+        }
+    }
+    
+    ?>
+    <div class="wrap">
+        <h1>MXWM PMP System Installer</h1>
+        <p><strong>CÓDIGO DE CONTINUACIÓN:</strong> <code>MXWM-PMP-FRONTEND-FIX-DIC2024-FINAL</code></p>
+        
+        <?php if ($status): ?>
+            <div class="notice notice-success">
+                <p><?php echo esc_html($status); ?></p>
+            </div>
+        <?php endif; ?>
+        
+        <?php if ($error): ?>
+            <div class="notice notice-error">
+                <p><?php echo esc_html($error); ?></p>
+            </div>
+        <?php endif; ?>
+        
+        <div class="card" style="max-width: 800px;">
+            <h2>Estado del Sistema</h2>
+            <table class="widefat">
+                <tr>
+                    <td><strong>Página Crear Proyecto:</strong></td>
+                    <td><?php echo get_page_by_path('crear-proyecto-frontend') ? '✅ Existe' : '❌ No existe'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Página Editar Proyecto:</strong></td>
+                    <td><?php echo get_page_by_path('editar-proyecto-frontend') ? '✅ Existe' : '❌ No existe'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>BuddyPress:</strong></td>
+                    <td><?php echo function_exists('bp_is_active') ? '✅ Activo' : '❌ No activo'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>ACF Pro:</strong></td>
+                    <td><?php echo function_exists('get_field') ? '✅ Activo' : '❌ No activo'; ?></td>
+                </tr>
+            </table>
+        </div>
+        
+        <div class="card" style="max-width: 800px; margin-top: 20px;">
+            <h2>Instalación del Sistema PMP</h2>
+            <p>Este proceso instalará automáticamente:</p>
+            <ul>
+                <li>✓ Post type 'proyecto' con permisos correctos</li>
+                <li>✓ Roles PMP Nivel 2 y 3 con capacidades específicas</li>
+                <li>✓ Páginas para crear y editar proyectos desde frontend</li>
+                <li>✓ Menús BuddyPress para usuarios PMP</li>
+                <li>✓ Permisos y validaciones de seguridad</li>
+                <li>✓ Campos ACF condicionales según nivel PMP</li>
+            </ul>
+            
+            <form method="post" style="margin-top: 20px;">
+                <?php wp_nonce_field('install_pmp_system', 'installer_nonce'); ?>
+                <p class="submit">
+                    <input type="submit" name="install_pmp_system" class="button button-primary button-large" value="Instalar Sistema PMP" />
+                </p>
+            </form>
+        </div>
+        
+        <div class="card" style="max-width: 800px; margin-top: 20px;">
+            <h2>Usuarios de Prueba</h2>
+            <p>Crear usuarios de prueba para testing del sistema:</p>
+            <ul>
+                <li><strong>pmp2_test</strong> - Usuario PMP Nivel 2 (contraseña: test123)</li>
+                <li><strong>pmp3_test</strong> - Usuario PMP Nivel 3 (contraseña: test123)</li>
+            </ul>
+            
+            <form method="post" style="margin-top: 20px;">
+                <?php wp_nonce_field('create_test_users', 'test_users_nonce'); ?>
+                <p class="submit">
+                    <input type="submit" name="create_test_users" class="button button-secondary" value="Crear Usuarios de Prueba" />
+                </p>
+            </form>
+        </div>
+        
+        <div class="card" style="max-width: 800px; margin-top: 20px;">
+            <h2>Pasos Post-Instalación</h2>
+            <ol>
+                <li><strong>Verificar Templates:</strong> Asegúrate de que los archivos de template estén en el directorio del tema:
+                    <ul>
+                        <li><code>page-crear-proyecto-frontend.php</code></li>
+                        <li><code>page-editar-proyecto-frontend.php</code></li>
+                        <li><code>archive-proyecto.php</code></li>
+                        <li><code>single-proyecto.php</code></li>
+                    </ul>
+                </li>
+                <li><strong>Configurar ACF:</strong> Crear grupo de campos "Proyecto Info" con:
+                    <ul>
+                        <li>ubicacion_proyecto (Text)</li>
+                        <li>presupuesto_proyecto (Select)</li>
+                        <li>categoria_proyecto (Select)</li>
+                        <li>estado_proyecto (Select)</li>
+                        <li>galeria_proyecto (Gallery - solo PMP nivel 3)</li>
+                    </ul>
+                </li>
+                <li><strong>Configurar Permalinks:</strong> Ir a Ajustes > Enlaces permanentes y guardar para refrescar las reglas</li>
+                <li><strong>Testing:</strong> Probar con usuarios PMP de diferentes niveles</li>
+            </ol>
+        </div>
+    </div>
+    <?php
+}
+
+/**
+ * Función principal de instalación
+ */
+function mxwm_install_pmp_system() {
+    try {
+        $results = array();
+        
+        // 1. Registrar post type proyecto
+        $results[] = mxwm_register_proyecto_post_type_installer();
+        
+        // 2. Crear roles PMP
+        $results[] = mxwm_create_pmp_roles_installer();
+        
+        // 3. Asignar capacidades
+        $results[] = mxwm_assign_capabilities_installer();
+        
+        // 4. Crear páginas del sistema
+        $results[] = mxwm_create_system_pages();
+        
+        // 5. Configurar opciones
+        $results[] = mxwm_setup_system_options();
+        
+        // 6. Flush rewrite rules
+        flush_rewrite_rules();
+        
+        return array(
+            'success' => true,
+            'message' => 'Sistema PMP instalado correctamente. ' . implode(' ', $results)
+        );
+        
+    } catch (Exception $e) {
+        return array(
+            'success' => false,
+            'message' => 'Error durante la instalación: ' . $e->getMessage()
+        );
+    }
+}
+
+/**
+ * Registrar post type proyecto con permisos
+ */
+function mxwm_register_proyecto_post_type_installer() {
+    $labels = array(
+        'name' => 'Proyectos',
+        'singular_name' => 'Proyecto',
+        'menu_name' => 'Proyectos',
+        'add_new' => 'Añadir Nuevo',
+        'add_new_item' => 'Añadir Nuevo Proyecto',
+        'edit_item' => 'Editar Proyecto',
+        'new_item' => 'Nuevo Proyecto',
+        'view_item' => 'Ver Proyecto',
+        'search_items' => 'Buscar Proyectos',
+        'not_found' => 'No se encontraron proyectos',
+        'not_found_in_trash' => 'No se encontraron proyectos en la papelera'
+    );
+    
+    $capabilities = array(
+        'edit_post' => 'edit_proyecto',
+        'read_post' => 'read_proyecto',
+        'delete_post' => 'delete_proyecto',
+        'edit_posts' => 'edit_proyectos',
+        'edit_others_posts' => 'edit_others_proyectos',
+        'publish_posts' => 'publish_proyectos',
+        'read_private_posts' => 'read_private_proyectos',
+        'delete_posts' => 'delete_proyectos',
+        'delete_private_posts' => 'delete_private_proyectos',
+        'delete_published_posts' => 'delete_published_proyectos',
+        'delete_others_posts' => 'delete_others_proyectos',
+        'edit_private_posts' => 'edit_private_proyectos',
+        'edit_published_posts' => 'edit_published_proyectos',
+        'create_posts' => 'edit_proyectos',
+    );
+    
+$args = array(
+    'labels' => $labels,
+    'public' => true,
+    'has_archive' => true, // ✅ debe ser booleano
+    'rewrite' => array(
+        'slug'       => 'proyectos', // ✅ plural, coincide con la URL pública
+        'with_front' => false        // ✅ evita prefijos como /blog/
+    ),
+    'supports' => array('title', 'editor', 'thumbnail', 'author', 'comments'),
+    'menu_icon' => 'dashicons-portfolio',
+    'capabilities' => $capabilities,
+    'map_meta_cap' => true,
+    'show_in_rest' => true,
+);
+
+    
+    register_post_type('proyecto', $args);
+    
+    return 'Post type "proyecto" registrado.';
+}
+
+/**
+ * Crear roles PMP
+ */
+function mxwm_create_pmp_roles_installer() {
+    // Rol PMP Nivel 2
+    if (!get_role('pmp_level_2')) {
+        add_role('pmp_level_2', 'PMP Nivel 2', array(
+            'read' => true,
+            'upload_files' => true,
+        ));
+    }
+    
+    // Rol PMP Nivel 3
+    if (!get_role('pmp_level_3')) {
+        add_role('pmp_level_3', 'PMP Nivel 3', array(
+            'read' => true,
+            'upload_files' => true,
+            'manage_categories' => true,
+        ));
+    }
+    
+    return 'Roles PMP creados.';
+}
+
+/**
+ * Asignar capacidades específicas
+ */
+function mxwm_assign_capabilities_installer() {
+    $proyecto_caps = array(
+        'edit_proyecto',
+        'read_proyecto',
+        'delete_proyecto',
+        'edit_proyectos',
+        'publish_proyectos',
+        'delete_proyectos',
+        'edit_private_proyectos',
+        'edit_published_proyectos',
+        'delete_private_proyectos',
+        'delete_published_proyectos',
+    );
+    
+    $advanced_caps = array(
+        'edit_others_proyectos',
+        'delete_others_proyectos',
+        'read_private_proyectos',
+    );
+    
+    // Asignar a administradores
+    $admin = get_role('administrator');
+    if ($admin) {
+        foreach (array_merge($proyecto_caps, $advanced_caps) as $cap) {
+            $admin->add_cap($cap);
+        }
+    }
+    
+    // Asignar a editores
+    $editor = get_role('editor');
+    if ($editor) {
+        foreach (array_merge($proyecto_caps, $advanced_caps) as $cap) {
+            $editor->add_cap($cap);
+        }
+    }
+    
+    // PMP Nivel 2
+    $pmp2 = get_role('pmp_level_2');
+    if ($pmp2) {
+        foreach ($proyecto_caps as $cap) {
+            $pmp2->add_cap($cap);
+        }
+    }
+    
+    // PMP Nivel 3 (con capacidades avanzadas)
+    $pmp3 = get_role('pmp_level_3');
+    if ($pmp3) {
+        foreach (array_merge($proyecto_caps, $advanced_caps) as $cap) {
+            $pmp3->add_cap($cap);
+        }
+    }
+    
+    return 'Capacidades asignadas.';
+}
+
+/**
+ * Crear páginas del sistema
+ */
+function mxwm_create_system_pages() {
+    $pages_created = array();
+    
+    // Página Crear Proyecto Frontend
+    if (!get_page_by_path('crear-proyecto-frontend')) {
+        $page_id = wp_insert_post(array(
+            'post_title' => 'Crear Proyecto Frontend',
+            'post_name' => 'crear-proyecto-frontend',
+            'post_status' => 'publish',
+            'post_type' => 'page',
+            'post_content' => '[crear_proyecto_frontend]',
+            'page_template' => 'page-crear-proyecto-frontend.php'
+        ));
+        
+        if ($page_id) {
+            $pages_created[] = 'Crear Proyecto Frontend';
+        }
+    }
+    
+    // Página Editar Proyecto Frontend
+    if (!get_page_by_path('editar-proyecto-frontend')) {
+        $page_id = wp_insert_post(array(
+            'post_title' => 'Editar Proyecto Frontend',
+            'post_name' => 'editar-proyecto-frontend',
+            'post_status' => 'publish',
+            'post_type' => 'page',
+            'post_content' => '[editar_proyecto_frontend]',
+            'page_template' => 'page-editar-proyecto-frontend.php'
+        ));
+        
+        if ($page_id) {
+            $pages_created[] = 'Editar Proyecto Frontend';
+        }
+    }
+    
+    return 'Páginas creadas: ' . implode(', ', $pages_created);
+}
+
+/**
+ * Configurar opciones del sistema
+ */
+function mxwm_setup_system_options() {
+    // Activar UTF-8 support
+    update_option('mxwm_utf8_support', true);
+    
+    // Configurar opciones de proyectos
+    update_option('mxwm_proyecto_settings', array(
+        'per_page' => 6,
+        'enable_comments' => true,
+        'enable_frontend_submission' => true,
+        'pmp_level_2_can_create' => true,
+        'pmp_level_3_can_create' => true,
+        'pmp_level_3_gallery' => true,
+    ));
+    
+    return 'Opciones configuradas.';
+}
+
+/**
+ * Crear usuarios de prueba
+ */
+function mxwm_create_test_users() {
+    try {
+        $users_created = array();
+        
+        // Usuario PMP Nivel 2
+        if (!username_exists('pmp2_test')) {
+            $user_id = wp_create_user('pmp2_test', 'test123', 'pmp2@test.com');
+            if ($user_id && !is_wp_error($user_id)) {
+                $user = new WP_User($user_id);
+                $user->set_role('pmp_level_2');
+                update_user_meta($user_id, 'pmp_level', '2');
+                $users_created[] = 'pmp2_test';
+            }
+        }
+        
+        // Usuario PMP Nivel 3
+        if (!username_exists('pmp3_test')) {
+            $user_id = wp_create_user('pmp3_test', 'test123', 'pmp3@test.com');
+            if ($user_id && !is_wp_error($user_id)) {
+                $user = new WP_User($user_id);
+                $user->set_role('pmp_level_3');
+                update_user_meta($user_id, 'pmp_level', '3');
+                $users_created[] = 'pmp3_test';
+            }
+        }
+        
+        return array(
+            'success' => true,
+            'message' => 'Usuarios de prueba creados: ' . implode(', ', $users_created) . '. Contraseña: test123'
+        );
+        
+    } catch (Exception $e) {
+        return array(
+            'success' => false,
+            'message' => 'Error creando usuarios: ' . $e->getMessage()
+        );
+    }
+}
+
+/**
+ * Shortcode para mostrar estado del sistema
+ */
+function mxwm_system_status_shortcode() {
+    if (!current_user_can('administrator')) {
+        return '<p>Solo administradores pueden ver esta información.</p>';
+    }
+    
+    $status = array(
+        'Post Type Proyecto' => post_type_exists('proyecto') ? '✅' : '❌',
+        'Rol PMP Nivel 2' => get_role('pmp_level_2') ? '✅' : '❌',
+        'Rol PMP Nivel 3' => get_role('pmp_level_3') ? '✅' : '❌',
+        'BuddyPress' => function_exists('bp_is_active') ? '✅' : '❌',
+        'ACF Pro' => function_exists('get_field') ? '✅' : '❌',
+    );
+    
+    $output = '<div style="background: #f0f0f0; padding: 1rem; border-radius: 5px; margin: 1rem 0;">';
+    $output .= '<h4>Estado del Sistema MXWM PMP</h4>';
+    $output .= '<ul style="list-style: none; padding: 0;">';
+    
+    foreach ($status as $component => $status_icon) {
+        $output .= '<li style="margin-bottom: 0.5rem;">';
+        $output .= '<strong>' . $component . ':</strong> ' . $status_icon;
+        $output .= '</li>';
+    }
+    
+    $output .= '</ul>';
+    $output .= '<p><small>Código: MXWM-PMP-FRONTEND-FIX-DIC2024-FINAL</small></p>';
+    $output .= '</div>';
+    
+    return $output;
+}
+add_shortcode('mxwm_system_status', 'mxwm_system_status_shortcode');
+                    <td><strong>Post Type 'proyecto':</strong></td>
+                    <td><?php echo post_type_exists('proyecto') ? '✅ Registrado' : '❌ No registrado'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Rol PMP Nivel 2:</strong></td>
+                    <td><?php echo get_role('pmp_level_2') ? '✅ Creado' : '❌ No existe'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Rol PMP Nivel 3:</strong></td>
+                    <td><?php echo get_role('pmp_level_3') ? '✅ Creado' : '❌ No existe'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Página Crear Proyecto:</strong></td>
+                    <td><?php echo get_page_by_path('crear-proyecto-frontend') ? '✅ Existe' : '❌ No existe'; ?></td>
+                </tr>
+                <tr>
+                    <td><strong>Página Editar Proyecto:</strong></td>
+                    <td><?php echo get_page_by_path('editar-proyecto-frontend') ? '✅ Existe' : '❌ No existe'; ?></td>
+                </tr>
+                <tr>
